@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Machine Capacity Dashboard</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; background: #f9f9f9; }
+  h1 { text-align: center; color: #333; }
+  #filters { margin-bottom: 20px; text-align: center; }
+  select { margin: 0 10px; padding: 5px; }
+  #summary { text-align: center; margin-top: 20px; font-weight: bold; }
+  #chartContainer { max-width: 900px; margin: 0 auto; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+<h1>Machine Capacity Dashboard</h1>
+
+<div id="filters">
+  <label>Cluster:
+    <select id="clusterFilter" onchange="applyFilters()"><option value="">All</option></select>
+  </label>
+  <label>SBU:
+    <select id="sbuFilter" onchange="applyFilters()"><option value="">All</option></select>
+  </label>
+  <label>Machine:
+    <select id="machineFilter" onchange="applyFilters()"><option value="">All</option></select>
+  </label>
+</div>
+
+<div id="chartContainer">
+  <canvas id="capacityChart"></canvas>
+</div>
+
+<div id="summary"></div>
+
+<script>
+  // Replace these with your published Google Sheet info
+  const SHEET_ID = 'YOUR_SHEET_ID';
+  const SHEET_GID = 'YOUR_SHEET_GID';
+
+  // URL to fetch CSV from published Google Sheet
+  const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${SHEET_GID}`;
+
+  let allData = [];
+  let filteredData = [];
+  let chart;
+
+  // Parse CSV text to array of objects
+  function csvToArray(str, delimiter = ',') {
+    const headers = str.slice(0, str.indexOf('\n')).split(delimiter);
+    const rows = str.slice(str.indexOf('\n') + 1).split('\n').filter(r => r.trim() !== '');
+    return rows.map(row => {
+      const values = row.split(delimiter);
+      return headers.reduce((obj, header, i) => {
+        obj[header.trim()] = values[i] ? values[i].trim() : '';
+        return obj;
+      }, {});
+    });
+  }
+
+  // Populate filter dropdowns with unique values
+  function populateFilters(data) {
+    const clusterSet = new Set();
+    const sbuSet = new Set();
+    const machineSet = new Set();
+
+    data.forEach(row => {
+      clusterSet.add(row['Cluster']);
+      sbuSet.add(row['SBU']);
+      machineSet.add(row['Machine']);
+    });
+
+    fillSelect('clusterFilter', clusterSet);
+    fillSelect('sbuFilter', sbuSet);
+    fillSelect('machineFilter', machineSet);
+  }
+
+  function fillSelect(id, valuesSet) {
+    const select = document.getElementById(id);
+    // Clear except first option
+    select.options.length = 1;
+    Array.from(valuesSet).sort().forEach(val => {
+      const option = document.createElement('option');
+      option.value = val;
+      option.textContent = val;
+      select.appendChild(option);
+    });
+  }
+
+  // Apply filters and update dashboard
+  function applyFilters() {
+    const cluster = document.getElementById('clusterFilter').value;
+    const sbu = document.getElementById('sbuFilter').value;
+    const machine = document.getElementById('machineFilter').value;
+
+    filteredData = allData.filter(row => {
+      return (!cluster || row['Cluster'] === cluster) &&
+             (!sbu || row['SBU'] === sbu) &&
+             (!machine || row['Machine'] === machine);
+    });
+
+    updateDashboard();
+  }
+
+  // Update chart and summary
+  function updateDashboard() {
+    if (!filteredData.length) {
+      document.getElementById('summary').textContent = 'No data for selected filters.';
+      if (chart) chart.destroy();
+      return;
+    }
+
+    const labels = filteredData.map(r => r['Machine']);
+    const designCap = filteredData.map(r => parseFloat(r['Design Capacity']) || 0);
+    const workableCap = filteredData.map(r => parseFloat(r['Workable Capacity']) || 0);
+    const actualCap = filteredData.map(r => parseFloat(r['Actual Capacity']) || 0);
+
+    // Calculate averages and sums
+    const avg = arr => (arr.reduce((a,b) => a+b, 0) / arr.length).toFixed(2);
+    const sum = arr => arr.reduce((a,b) => a+b, 0).toFixed(2);
+
+    const avgDesign = avg(designCap);
+    const avgWorkable = avg(workableCap);
+    const avgActual = avg(actualCap);
+
+    const sumDesign = sum(designCap);
+    const sumWorkable = sum(workableCap);
+    const sumActual = sum(actualCap);
+
+    document.getElementById('summary').innerHTML = `
+      Average Capacities: Design = ${avgDesign}, Workable = ${avgWorkable}, Actual = ${avgActual} <br/>
+      Sum of Capacities: Design = ${sumDesign}, Workable = ${sumWorkable}, Actual = ${sumActual}
+    `;
+
+    // Render chart
+    const ctx = document.getElementById('capacityChart').getContext('2d');
+    if (chart) chart.destroy();
+    chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Design Capacity', data: designCap, backgroundColor: 'rgba(54, 162, 235, 0.7)' },
+          { label: 'Workable Capacity', data: workableCap, backgroundColor: 'rgba(255, 206, 86, 0.7)' },
+          { label: 'Actual Capacity', data: actualCap, backgroundColor: 'rgba(75, 192, 192, 0.7)' }
+        ]
+      },
+      options: {
+        responsive: true,
+        scales: { y: { beginAtZero: true } },
+        plugins: { legend: { position: 'top' } }
+      }
+    });
+  }
+
+  // Fetch CSV data and initialize
+  fetch(CSV_URL)
+    .then(res => res.text())
+    .then(text => {
+      allData = csvToArray(text);
+      populateFilters(allData);
+      filteredData = allData;
+      updateDashboard();
+    })
+    .catch(err => {
+      document.body.innerHTML = '<p style="color:red; text-align:center;">Failed to load data. Check your Sheet ID and GID.</p>';
+      console.error(err);
+    });
+</script>
+
+</body>
+</html>
