@@ -36,13 +36,13 @@
 
 <div id="filters">
   <label>Cluster:
-    <select id="clusterFilter" onchange="applyFilters()"><option value="">All</option></select>
+    <select id="clusterFilter" onchange="updateSBUFilter()"><option value="">All</option></select>
   </label>
   <label>SBU:
-    <select id="sbuFilter" onchange="applyFilters()"><option value="">All</option></select>
+    <select id="sbuFilter" onchange="updateMachineFilter()" disabled><option value="">All</option></select>
   </label>
   <label>Machine:
-    <select id="machineFilter" onchange="applyFilters()"><option value="">All</option></select>
+    <select id="machineFilter" onchange="applyFilters()" disabled><option value="">All</option></select>
   </label>
 </div>
 
@@ -85,25 +85,50 @@
     });
   }
 
-  function populateFilters(data) {
+  function populateClusterFilter(data) {
     const clusterSet = new Set();
-    const sbuSet = new Set();
-    const machineSet = new Set();
-
     data.forEach(row => {
-      if(row['Cluster']) clusterSet.add(row['Cluster']);
-      if(row['SBU']) sbuSet.add(row['SBU']);
-      if(row['Machine']) machineSet.add(row['Machine']);
+      if (row['Cluster']) clusterSet.add(row['Cluster']);
+    });
+    fillSelect('clusterFilter', clusterSet);
+  }
+
+  function updateSBUFilter() {
+    const cluster = document.getElementById('clusterFilter').value;
+    const sbuSet = new Set();
+
+    allData.forEach(row => {
+      if (row['Cluster'] === cluster) {
+        sbuSet.add(row['SBU']);
+      }
     });
 
-    fillSelect('clusterFilter', clusterSet);
     fillSelect('sbuFilter', sbuSet);
+    document.getElementById('sbuFilter').disabled = !sbuSet.size;
+    document.getElementById('machineFilter').disabled = true;
+    document.getElementById('machineFilter').innerHTML = '<option value="">All</option>';
+    applyFilters();
+  }
+
+  function updateMachineFilter() {
+    const cluster = document.getElementById('clusterFilter').value;
+    const sbu = document.getElementById('sbuFilter').value;
+    const machineSet = new Set();
+
+    allData.forEach(row => {
+      if (row['Cluster'] === cluster && row['SBU'] === sbu) {
+        machineSet.add(row['Machine']);
+      }
+    });
+
     fillSelect('machineFilter', machineSet);
+    document.getElementById('machineFilter').disabled = !machineSet.size;
+    applyFilters();
   }
 
   function fillSelect(id, valuesSet) {
     const select = document.getElementById(id);
-    select.options.length = 1; // keep only "All"
+    select.innerHTML = '<option value="">All</option>';
     Array.from(valuesSet).sort().forEach(val => {
       const option = document.createElement('option');
       option.value = val;
@@ -157,7 +182,7 @@
     .then(res => res.text())
     .then(text => {
       allData = csvToArray(text);
-      populateFilters(allData);
+      populateClusterFilter(allData);
       filteredData = allData;
       updateTable(filteredData);
     })
@@ -169,4 +194,3 @@
 
 </body>
 </html>
-
