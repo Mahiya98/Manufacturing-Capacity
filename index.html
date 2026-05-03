@@ -11,6 +11,9 @@
   select { margin: 0 10px; padding: 5px; }
   #summary { text-align: center; margin-top: 20px; font-weight: bold; }
   #chartContainer { max-width: 900px; margin: 0 auto; }
+  table { width: 90%; margin: 20px auto; border-collapse: collapse; }
+  th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+  th { background-color: #f4f4f4; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -35,6 +38,22 @@
 </div>
 
 <div id="summary"></div>
+
+<table id="dataTable">
+  <thead>
+    <tr>
+      <th>Cluster</th>
+      <th>SBU</th>
+      <th>Machine</th>
+      <th>Design Capacity</th>
+      <th>Workable Capacity</th>
+      <th>Actual Capacity</th>
+    </tr>
+  </thead>
+  <tbody>
+    <!-- Data rows will be dynamically inserted here -->
+  </tbody>
+</table>
 
 <script>
   // Replace these with your published Google Sheet info
@@ -105,11 +124,12 @@
     updateDashboard();
   }
 
-  // Update chart and summary
+  // Update chart, summary, and data table
   function updateDashboard() {
     if (!filteredData.length) {
       document.getElementById('summary').textContent = 'No data for selected filters.';
       if (chart) chart.destroy();
+      updateTable([]);
       return;
     }
 
@@ -153,6 +173,28 @@
         scales: { y: { beginAtZero: true } },
         plugins: { legend: { position: 'top' } }
       }
+    });
+
+    // Update data table
+    updateTable(filteredData);
+  }
+
+  // Update the data table
+  function updateTable(data) {
+    const tbody = document.getElementById('dataTable').querySelector('tbody');
+    tbody.innerHTML = ''; // Clear existing rows
+
+    data.forEach(row => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${row['Cluster']}</td>
+        <td>${row['SBU']}</td>
+        <td>${row['Machine']}</td>
+        <td>${row['Design Capacity']}</td>
+        <td>${row['Workable Capacity']}</td>
+        <td>${row['Actual Capacity']}</td>
+      `;
+      tbody.appendChild(tr);
     });
   }
 
