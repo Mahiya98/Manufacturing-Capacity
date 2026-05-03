@@ -9,13 +9,26 @@
   h1 { text-align: center; color: #333; }
   #filters { margin-bottom: 20px; text-align: center; }
   select { margin: 0 10px; padding: 5px; }
-  #summary { text-align: center; margin-top: 20px; font-weight: bold; }
-  #chartContainer { max-width: 900px; margin: 0 auto; }
-  table { width: 90%; margin: 20px auto; border-collapse: collapse; }
-  th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
-  th { background-color: #f4f4f4; }
+  #dataTable {
+    width: 95%;
+    margin: 20px auto;
+    border-collapse: collapse;
+  }
+  th, td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: center;
+  }
+  th {
+    background-color: #f4f4f4;
+  }
+  #noDataMessage {
+    text-align: center;
+    margin-top: 20px;
+    font-weight: bold;
+    color: #a00;
+  }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 
@@ -33,12 +46,6 @@
   </label>
 </div>
 
-<div id="chartContainer">
-  <canvas id="capacityChart"></canvas>
-</div>
-
-<div id="summary"></div>
-
 <table id="dataTable">
   <thead>
     <tr>
@@ -48,6 +55,7 @@
       <th>Design Capacity</th>
       <th>Workable Capacity</th>
       <th>Actual Capacity</th>
+      <th>UOM</th>
     </tr>
   </thead>
   <tbody>
@@ -55,41 +63,37 @@
   </tbody>
 </table>
 
+<div id="noDataMessage" style="display:none;">No data for selected filters.</div>
+
 <script>
-  // Replace these with your published Google Sheet info
   const SHEET_ID = '1UlWyBvY6z4cca-jNhz0fu1hl-Y56tkD2uSw4jvQr1Lo';
   const SHEET_GID = '763920307';
-
-  // URL to fetch CSV from published Google Sheet
   const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${SHEET_GID}`;
 
   let allData = [];
   let filteredData = [];
-  let chart;
 
-  // Parse CSV text to array of objects
   function csvToArray(str, delimiter = ',') {
-    const headers = str.slice(0, str.indexOf('\n')).split(delimiter);
+    const headers = str.slice(0, str.indexOf('\n')).split(delimiter).map(h => h.trim());
     const rows = str.slice(str.indexOf('\n') + 1).split('\n').filter(r => r.trim() !== '');
     return rows.map(row => {
       const values = row.split(delimiter);
       return headers.reduce((obj, header, i) => {
-        obj[header.trim()] = values[i] ? values[i].trim() : '';
+        obj[header] = values[i] ? values[i].trim() : '';
         return obj;
       }, {});
     });
   }
 
-  // Populate filter dropdowns with unique values
   function populateFilters(data) {
     const clusterSet = new Set();
     const sbuSet = new Set();
     const machineSet = new Set();
 
     data.forEach(row => {
-      clusterSet.add(row['Cluster']);
-      sbuSet.add(row['SBU']);
-      machineSet.add(row['Machine']);
+      if(row['Cluster']) clusterSet.add(row['Cluster']);
+      if(row['SBU']) sbuSet.add(row['SBU']);
+      if(row['Machine']) machineSet.add(row['Machine']);
     });
 
     fillSelect('clusterFilter', clusterSet);
@@ -99,8 +103,7 @@
 
   function fillSelect(id, valuesSet) {
     const select = document.getElementById(id);
-    // Clear except first option
-    select.options.length = 1;
+    select.options.length = 1; // keep only "All"
     Array.from(valuesSet).sort().forEach(val => {
       const option = document.createElement('option');
       option.value = val;
@@ -109,7 +112,6 @@
     });
   }
 
-  // Apply filters and update dashboard
   function applyFilters() {
     const cluster = document.getElementById('clusterFilter').value;
     const sbu = document.getElementById('sbuFilter').value;
@@ -121,97 +123,50 @@
              (!machine || row['Machine'] === machine);
     });
 
-    updateDashboard();
-  }
-
-  // Update chart, summary, and data table
-  function updateDashboard() {
-    if (!filteredData.length) {
-      document.getElementById('summary').textContent = 'No data for selected filters.';
-      if (chart) chart.destroy();
-      updateTable([]);
-      return;
-    }
-
-    const labels = filteredData.map(r => r['Machine']);
-    const designCap = filteredData.map(r => parseFloat(r['Design Capacity']) || 0);
-    const workableCap = filteredData.map(r => parseFloat(r['Workable Capacity']) || 0);
-    const actualCap = filteredData.map(r => parseFloat(r['Actual Capacity']) || 0);
-
-    // Calculate averages and sums
-    const avg = arr => (arr.reduce((a,b) => a+b, 0) / arr.length).toFixed(2);
-    const sum = arr => arr.reduce((a,b) => a+b, 0).toFixed(2);
-
-    const avgDesign = avg(designCap);
-    const avgWorkable = avg(workableCap);
-    const avgActual = avg(actualCap);
-
-    const sumDesign = sum(designCap);
-    const sumWorkable = sum(workableCap);
-    const sumActual = sum(actualCap);
-
-    document.getElementById('summary').innerHTML = `
-      Average Capacities: Design = ${avgDesign}, Workable = ${avgWorkable}, Actual = ${avgActual} <br/>
-      Sum of Capacities: Design = ${sumDesign}, Workable = ${sumWorkable}, Actual = ${sumActual}
-    `;
-
-    // Render chart
-    const ctx = document.getElementById('capacityChart').getContext('2d');
-    if (chart) chart.destroy();
-    chart = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [
-          { label: 'Design Capacity', data: designCap, backgroundColor: 'rgba(54, 162, 235, 0.7)' },
-          { label: 'Workable Capacity', data: workableCap, backgroundColor: 'rgba(255, 206, 86, 0.7)' },
-          { label: 'Actual Capacity', data: actualCap, backgroundColor: 'rgba(75, 192, 192, 0.7)' }
-        ]
-      },
-      options: {
-        responsive: true,
-        scales: { y: { beginAtZero: true } },
-        plugins: { legend: { position: 'top' } }
-      }
-    });
-
-    // Update data table
     updateTable(filteredData);
   }
 
-  // Update the data table
   function updateTable(data) {
-    const tbody = document.getElementById('dataTable').querySelector('tbody');
-    tbody.innerHTML = ''; // Clear existing rows
+    const tbody = document.querySelector('#dataTable tbody');
+    const noDataMessage = document.getElementById('noDataMessage');
+    tbody.innerHTML = '';
+
+    if (data.length === 0) {
+      noDataMessage.style.display = 'block';
+      return;
+    } else {
+      noDataMessage.style.display = 'none';
+    }
 
     data.forEach(row => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td>${row['Cluster']}</td>
-        <td>${row['SBU']}</td>
-        <td>${row['Machine']}</td>
-        <td>${row['Design Capacity']}</td>
-        <td>${row['Workable Capacity']}</td>
-        <td>${row['Actual Capacity']}</td>
+        <td>${row['Cluster'] || ''}</td>
+        <td>${row['SBU'] || ''}</td>
+        <td>${row['Machine'] || ''}</td>
+        <td>${row['Design Capacity'] || ''}</td>
+        <td>${row['Workable Capacity'] || ''}</td>
+        <td>${row['Actual Capacity'] || ''}</td>
+        <td>${row['UOM'] || ''}</td>
       `;
       tbody.appendChild(tr);
     });
   }
 
-  // Fetch CSV data and initialize
   fetch(CSV_URL)
     .then(res => res.text())
     .then(text => {
       allData = csvToArray(text);
       populateFilters(allData);
       filteredData = allData;
-      updateDashboard();
+      updateTable(filteredData);
     })
     .catch(err => {
-      document.body.innerHTML = '<p style="color:red; text-align:center;">Failed to load data. Check your Sheet ID and GID.</p>';
+      document.body.innerHTML = '<p style="color:red; text-align:center;">Failed to load data. Check your Sheet ID and GID and ensure the sheet is published to the web.</p>';
       console.error(err);
     });
 </script>
 
 </body>
 </html>
+
